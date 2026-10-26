@@ -1,116 +1,111 @@
+
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
 
-PROJECT="$HOME/foto-ai"
+REPO="https://github.com/rydha775-png/Ridzgangs.git"
+PROJECT="$HOME/.local/share/ridzgangs"
 BIN="$HOME/bin"
-CONFIG="$HOME/.config/foto-ai"
+CONFIG="$HOME/.config/ridzgangs"
 
-echo "================================"
-echo "       FOTOAI INSTALLER"
-echo "================================"
+echo "=================================="
+echo "      RIDZGANGS FOTOAI"
+echo "          INSTALLER"
+echo "=================================="
 
 pkg update -y
-pkg install -y python
+pkg install -y git python nano
 
-python -m pip install requests watchdog pillow
-
-mkdir -p "$PROJECT" "$BIN" "$CONFIG"
+mkdir -p "$HOME/.local/share" "$BIN" "$CONFIG"
 mkdir -p "$HOME/storage/shared/DCIM/Camera"
 mkdir -p "$HOME/storage/shared/DCIM/Camera_Enhanced"
 
-if [ ! -f "$PROJECT/ai_edit.py" ] || [ ! -f "$PROJECT/watch_camera.py" ]; then
-  echo "File proyek tidak lengkap di $PROJECT"
-  echo "Ekstrak semua file proyek ke ~/foto-ai terlebih dahulu."
-  exit 1
+if [ -d "$PROJECT/.git" ]; then
+    git -C "$PROJECT" pull --ff-only
+else
+    git clone "$REPO" "$PROJECT"
 fi
 
-cat > "$BIN/fotoai" <<'COMMANDS'
+python -m pip install requests watchdog pillow
+
+cat > "$BIN/ridzgangs" <<'LAUNCHER'
 #!/data/data/com.termux/files/usr/bin/bash
+PROJECT="$HOME/.local/share/ridzgangs"
+CONFIG="$HOME/.config/ridzgangs"
+KEYFILE="$CONFIG/key.sh"
 
-PROJECT="$HOME/foto-ai"
-CONFIG="$HOME/.config/foto-ai"
-PIDFILE="$CONFIG/watch.pid"
+mkdir -p "$CONFIG"
+chmod 700 "$CONFIG"
 
-case "$1" in
-  setup)
-    read -rsp "Masukkan API key OpenAI: " KEY
+if [ ! -s "$KEYFILE" ]; then
+    echo "Masukkan API key OpenAI milikmu."
+    read -rsp "API key: " API_KEY
     echo
-    if [ -z "$KEY" ]; then
-      echo "API key kosong."
-      exit 1
+    if [ -z "$API_KEY" ]; then
+        echo "API key tidak boleh kosong."
+        exit 1
     fi
     umask 077
-    printf 'export OPENAI_API_KEY=%q\n' "$KEY" > "$CONFIG/key.sh"
-    unset KEY
-    echo "API key tersimpan secara lokal."
-    ;;
-  start)
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-      echo "FotoAI sudah berjalan."
-      exit 0
-    fi
-    [ -f "$CONFIG/key.sh" ] && source "$CONFIG/key.sh"
-    if [ -z "$OPENAI_API_KEY" ]; then
-      echo "Atur API key dulu: fotoai setup"
-      exit 1
-    fi
-    cd "$PROJECT"
-    nohup python "$PROJECT/watch_camera.py" > "$CONFIG/watch.log" 2>&1 &
-    echo $! > "$PIDFILE"
-    sleep 2
-    if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-      echo "FotoAI dijalankan."
-    else
-      rm -f "$PIDFILE"
-      echo "Pemantau gagal mulai. Periksa: fotoai log"
-      exit 1
-    fi
-    ;;
-  stop)
-    if [ -f "$PIDFILE" ]; then
-      kill "$(cat "$PIDFILE")" 2>/dev/null || true
-      rm -f "$PIDFILE"
-      echo "Perintah berhenti dikirim."
-    else
-      echo "PID pemantau tidak ditemukan."
-    fi
-    ;;
-  status)
-    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-      echo "FotoAI terdeteksi berjalan."
-    else
-      echo "FotoAI tidak terdeteksi berjalan."
-    fi
-    ;;
-  log)
-    if [ -f "$CONFIG/watch.log" ]; then
-      tail -n 40 "$CONFIG/watch.log"
-    else
-      echo "Log belum tersedia. Jalankan: fotoai start"
-    fi
-    ;;
-  edit)
-    if [ -z "$2" ]; then
-      echo "Pakai: fotoai edit /lokasi/foto.jpg"
-      exit 1
-    fi
-    [ -f "$CONFIG/key.sh" ] && source "$CONFIG/key.sh"
-    python "$PROJECT/ai_edit.py" "$2"
-    ;;
-  *)
-    echo "FotoAI Tools"
-    echo "Perintah: setup | start | stop | status | log | edit"
-    ;;
-esac
-COMMANDS
+    printf 'export OPENAI_API_KEY=%q\n' "$API_KEY" > "$KEYFILE"
+    unset API_KEY
+fi
 
-chmod +x "$BIN/fotoai"
+source "$KEYFILE"
+export OPENAI_API_KEY
+
+while true; do
+    clear
+    echo "=================================="
+    echo "       RYDZGANGS FOTOAI"
+    echo "=================================="
+    echo "[1] Jalankan AI Kamera"
+    echo "[2] Ganti Prompt AI"
+    echo "[3] Ganti API Key"
+    echo "[0] Keluar"
+    echo
+    read -rp "Pilih menu: " PILIHAN
+
+    case "$PILIHAN" in
+        1)
+            cd "$PROJECT"
+            python "$PROJECT/watch_camera.py"
+            read -rp "Tekan Enter untuk kembali..."
+            ;;
+        2)
+            nano "$PROJECT/prompt.txt"
+            ;;
+        3)
+            read -rsp "API key baru: " API_KEY
+            echo
+            if [ -n "$API_KEY" ]; then
+                umask 077
+                printf 'export OPENAI_API_KEY=%q\n' "$API_KEY" > "$KEYFILE"
+                unset API_KEY
+                source "$KEYFILE"
+                export OPENAI_API_KEY
+                echo "API key diperbarui."
+            fi
+            read -rp "Tekan Enter..."
+            ;;
+        0)
+            unset OPENAI_API_KEY
+            exit 0
+            ;;
+        *)
+            echo "Pilihan tidak valid."
+            sleep 1
+            ;;
+    esac
+done
+LAUNCHER
+
+chmod 700 "$BIN/ridzgangs"
 
 if ! grep -qF 'export PATH="$HOME/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
-  echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
+    echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.bashrc"
 fi
 
 echo
-echo "Instalasi selesai."
-echo "Buka ulang Termux atau jalankan: source ~/.bashrc"
-echo "Lalu atur API key dengan: fotoai setup"
+echo "Instalasi selesai!"
+echo "Jalankan: source ~/.bashrc"
+echo "Lalu ketik: ridzgangs"
+
